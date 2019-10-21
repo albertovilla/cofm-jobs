@@ -1,9 +1,11 @@
 from bs4 import BeautifulSoup
 import requests
 import pandas as pd
+from datetime import date
 
 BASE_URL = 'http://www.cofm.es/es'
 SEARCH = '/tratarAplicacionOfertasEmpleo.do'
+
 ZONES = [
     ('Alcorcon', '13'),
     ('Getafe', '77'),
@@ -12,6 +14,7 @@ ZONES = [
     ('Mostoles', '181'),
     ('Humanes', '88')
 ]
+
 JOB_FIELDS = [
     'Referencia',
     'Actividad',
@@ -20,6 +23,7 @@ JOB_FIELDS = [
     'Zona',
     'Jornada',
 ]
+
 JOB_CONTACT = [
     'Persona de Contacto',
     'Teléfono',
@@ -41,7 +45,7 @@ def perform_search_request(zone):
         'actividad': '0',
         'experiencia': '-1',
         'tipo': '1',
-        'jornada': 'M',
+        'jornada': '',
         'zona': zone,
         'origen': '-1'
     }
@@ -55,6 +59,14 @@ def no_results(soup):
 
 
 def extract_jobs_from_request(soup):
+    """Returns a list of job references (urls) from a soup
+
+    Arguments:
+        soup {[type]} -- [description]
+
+    Returns:
+        [list] -- List of urls (strings)
+    """
     jobs_section = soup.find("div", {"class": "listado_tabla"})
     jobs_references = [BASE_URL + td.find('a')['href'] for td in
                        jobs_section.findChildren("td", {"class": "td-icono"})]
@@ -95,30 +107,73 @@ def process_job(url):
                                        replace('\n', ' ').\
                                        replace('\r', ' ')
 
+    job["url"] = url
+
     return job
 
 
 def process_jobs(jobs):
-    # do not truncate text in dataframe option
-    pd.set_option('display.max_colwidth', -1)
+    """ Generates a Pandas dataframe with all the jobs found
 
+    Arguments:
+        jobs {list} -- List of jobs to be processed
+
+    Returns:
+        [Dataframe] -- Pandas dataframe with jobs
+    """
     jobs_data = []
     for job in jobs:
         jobs_data.append(process_job(job))
 
-    df = pd.DataFrame(data=jobs_data)
-    print(df.to_html())
+    return pd.DataFrame(data=jobs_data)
 
 
-def search_jobs():
+def print_jobs(df):
+    """ Prints a Pandas dataframe in HTML format
+
+    Arguments:
+        df {Pandas dataframe} -- Pandas dataframe with jobs information
+    """
+    # do not truncate text in dataframe option
+    pd.set_option('display.max_colwidth', -1)
+
+    html = df.to_html()
+    filename = date.today().strftime("%Y-%m-%d") + ".html"
+    with open(filename, "w", encoding="utf-8") as file:
+        file.write("<!doctype html>")
+        file.write('<html lang="en">')
+        file.write("<head>")
+        file.write('<meta charset="utf-8">')
+        file.write('<link rel="stylesheet" href="pure-min.css"')
+        file.write("</head>")
+        file.write("<body>")
+        file.write('<section class="section">')
+        file.write('<div class="container">')
+        file.write(html)
+        file.write('</div>')
+        file.write('</section')
+        file.write("</body>")
+        file.write('</html>')
+
+
+def search_jobs(zones):
+    """ Search for jobs in the specified zones
+
+    Arguments:
+        zones {list} -- List of zones
+
+    Returns:
+        [Dataframe] -- Pandas dataframe with all jobs found
+    """
     jobs = []
-    for zone in ZONES:
+    for zone in zones:
         request = perform_search_request(zone[1])
         soup = BeautifulSoup(request.content, 'html.parser')
         jobs_zone = process_results(soup, zone[0])
         if jobs_zone:
             for job in jobs_zone:
                 jobs.append(job)
-    process_jobs(jobs)
 
-search_jobs()
+    return process_jobs(jobs)
+
+print_jobs((search_jobs(ZONES)))
